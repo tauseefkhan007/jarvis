@@ -65,6 +65,7 @@ def _builtin():
         "fetchMeals": ToolSpec("fetchMeals", "Retrieve meals from the database for a given time range."),
         "screenshot": ToolSpec("screenshot", "Capture a selected screen region and OCR the text."),
         "localFiles": ToolSpec("localFiles", "Safely read, write, list, append, or delete files within your home directory."),
+        "reminders": ToolSpec("reminders", "Create a local reminder for a future date and time, list pending reminders, mark one complete, or delete it."),
         "stop": ToolSpec("stop", "End the current conversation."),
     }
 
@@ -175,6 +176,14 @@ class TestKeywordStrategy:
     def test_meal_query_selects_meal_tools(self):
         result = select_tools("what did I eat yesterday", _builtin(), {}, strategy=ToolSelectionStrategy.KEYWORD)
         assert "fetchMeals" in result or "logMeal" in result
+
+    @pytest.mark.unit
+    def test_reminder_request_selects_reminders_tool(self):
+        result = select_tools(
+            "Remind me to call Sam tomorrow at three",
+            _builtin(), {}, strategy=ToolSelectionStrategy.KEYWORD,
+        )
+        assert "reminders" in result
 
     @pytest.mark.unit
     def test_search_query_selects_web_search(self):

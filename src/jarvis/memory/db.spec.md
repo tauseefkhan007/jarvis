@@ -101,3 +101,16 @@ index. Diary saves, summary rewrites and topic optimisation use this capability
 alongside the configured embedding model to refresh semantic candidates. An
 unavailable model or index skips embedding inference and preserves keyword
 retrieval.
+
+## Reminders
+
+Reminders are stored in the same local SQLite database with a stable ID, text,
+UTC due timestamp, creation timestamp, pending/completed status and optional
+notification timestamp. The tool redacts text before insertion. Pending
+reminders are listed by due timestamp; completed reminders remain available to
+the store API, and deletion removes a record.
+
+`claim_due_reminders` serialises competing delivery checks under the database
+lock and a SQLite writer transaction. It returns due pending records with no
+notification timestamp and sets their notification timestamp atomically.
+Each claimed reminder is returned once, including after daemon restarts.

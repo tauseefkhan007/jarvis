@@ -118,10 +118,12 @@ def _should_emit_as_log(line: str) -> bool:
     redacted query and scrubbed reply activity lines for chat. Diary IPC
     carries progress and token deltas for the log window.
     """
-    from jarvis.daemon import CHAT_IPC_PREFIX, VOICE_STATUS_IPC_PREFIX
-
+    from jarvis.daemon import CHAT_IPC_PREFIX, REMINDER_EVENT_PREFIX, VOICE_STATUS_IPC_PREFIX
     from jarvis.tasks import TASK_EVENT_PREFIX
-    return not line.startswith((CHAT_IPC_PREFIX, VOICE_STATUS_IPC_PREFIX, TASK_EVENT_PREFIX))
+
+    return not line.startswith((
+        CHAT_IPC_PREFIX, VOICE_STATUS_IPC_PREFIX, TASK_EVENT_PREFIX, REMINDER_EVENT_PREFIX,
+    ))
 
 
 def _collect_runtime_status_snapshot(
@@ -1147,12 +1149,16 @@ class LogSignals(QObject):
     new_log = pyqtSignal(str)
     voice_status = pyqtSignal(object, str)
     task_event = pyqtSignal(str)
+    reminder_event = pyqtSignal(str)
 
     def dispatch_output(self, line: str) -> None:
-        """Separate task protocol frames from user-facing activity lines."""
+        """Separate daemon protocol frames from user-facing activity lines."""
         from jarvis.tasks import TASK_EVENT_PREFIX
+        from jarvis.daemon import REMINDER_EVENT_PREFIX
         if line.startswith(TASK_EVENT_PREFIX):
             self.task_event.emit(line)
+        elif line.startswith(REMINDER_EVENT_PREFIX):
+            self.reminder_event.emit(line)
         else:
             self.new_log.emit(line)
 
@@ -1857,6 +1863,7 @@ class JarvisSystemTray:
         from desktop_app.macos_tray import install_macos_tray_event_guard
         install_macos_tray_event_guard()
         self.tray_icon = QSystemTrayIcon()
+        self.log_signals.reminder_event.connect(self._on_reminder_event)
         self.update_icon()
 
         # Create context menu
@@ -2780,7 +2787,7 @@ class JarvisSystemTray:
         if not self.daemon_process or not self.daemon_process.stdout:
             return
 
-        from jarvis.daemon import CHAT_IPC_PREFIX, VOICE_STATUS_IPC_PREFIX
+        from jarvis.daemon import CHAT_IPC_PREFIX, VOICE_STATUS_IPC_PREFIX, REMINDER_EVENT_PREFIX
         from jarvis.tasks import TASK_EVENT_PREFIX
         process = self.daemon_process
 
@@ -2804,11 +2811,35 @@ class JarvisSystemTray:
                     self.log_signals.voice_status.emit(process, line)
                 elif line.startswith(TASK_EVENT_PREFIX):
                     self.log_signals.task_event.emit(line)
+                elif line.startswith(REMINDER_EVENT_PREFIX):
+                    self.log_signals.reminder_event.emit(line)
                 if _should_emit_as_log(line):
                     self.log_signals.new_log.emit(line)
         except Exception as e:
             debug_log(f"log reader error: {e}", "desktop")
             self.log_signals.new_log.emit(f"⚠️ Log reader error: {e}\n")
+
+    def _on_reminder_event(self, line: str) -> None:
+        """Show a claimed due reminder as a native tray notification."""
+        from jarvis.daemon import REMINDER_EVENT_PREFIX
+        try:
+            event = json.loads(line[len(REMINDER_EVENT_PREFIX):])
+            if not isinstance(event, dict) or event.get("type") != "due":
+                raise ValueError("invalid reminder event")
+            data = event.get("data")
+            text = data.get("text") if isinstance(data, dict) else None
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("invalid reminder event")
+        except Exception as exc:
+            debug_log(f"invalid reminder event ({type(exc).__name__})", "desktop")
+            return
+        self.tray_icon.showMessage(
+            "⏰ Jarvis Reminder",
+            text[:500],
+            QSystemTrayIcon.MessageIcon.Information,
+            10000,
+        )
+        self.log_signals.new_log.emit(f"⏰ Reminder: {text[:500]}\n")
 
     def _on_chat_ipc_line(self, line: str) -> None:
         """Handle a ``__CHAT__:`` event line on the Qt main thread.

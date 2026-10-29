@@ -45,6 +45,17 @@ CREATE TABLE IF NOT EXISTS conversation_summaries (
   UNIQUE(date_utc, source_app)
 );
 
+-- Local reminders. Reminder text is redacted before it reaches this table.
+CREATE TABLE IF NOT EXISTS reminders (
+  id            TEXT PRIMARY KEY,
+  text          TEXT NOT NULL,
+  due_at        TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending',
+  notified_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(status, notified_at, due_at);
+
 -- Local task-centre state. Only redacted prompt/result/error text is stored.
 CREATE TABLE IF NOT EXISTS task_records (
   id            TEXT PRIMARY KEY,
@@ -178,6 +189,68 @@ class Database:
                     cur.execute('INSERT INTO diary_index_migrations(name) VALUES (?)', (migration,))
                     debug_log('Diary full-text index rebuilt from live summaries', 'memory')
                 self.conn.commit()
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def create_reminder(self, text: str, due_at: str, *, reminder_id: Optional[str] = None) -> str:
+        """Save a pending reminder and return its local identity."""
+        import uuid
+        identity = reminder_id or uuid.uuid4().hex[:12]
+        created_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO reminders(id, text, due_at, created_at) VALUES (?, ?, ?, ?)",
+                (identity, text, due_at, created_at),
+            )
+            self.conn.commit()
+        return identity
+
+    def list_reminders(self, *, include_completed: bool = False) -> list[sqlite3.Row]:
+        """Return pending reminders, ordered by their due instant."""
+        with self._lock:
+            if include_completed:
+                query = "SELECT * FROM reminders ORDER BY due_at, created_at"
+                return self.conn.execute(query).fetchall()
+            return self.conn.execute(
+                "SELECT * FROM reminders WHERE status = 'pending' ORDER BY due_at, created_at"
+            ).fetchall()
+
+    def complete_reminder(self, reminder_id: str) -> bool:
+        with self._lock:
+            cursor = self.conn.execute(
+                "UPDATE reminders SET status = 'completed' WHERE id = ? AND status = 'pending'",
+                (reminder_id,),
+            )
+            self.conn.commit()
+            return cursor.rowcount == 1
+
+    def delete_reminder(self, reminder_id: str) -> bool:
+        with self._lock:
+            cursor = self.conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+            self.conn.commit()
+            return cursor.rowcount == 1
+
+    def claim_due_reminders(
+        self, now_utc: Optional[str] = None, *, limit: int = 50,
+    ) -> list[sqlite3.Row]:
+        """Atomically mark due reminders notified and return them once."""
+        now_utc = now_utc or datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        with self._lock:
+            try:
+                self.conn.execute("BEGIN IMMEDIATE")
+                rows = self.conn.execute(
+                    "SELECT * FROM reminders WHERE status = 'pending' AND notified_at IS NULL "
+                    "AND due_at <= ? ORDER BY due_at, created_at LIMIT ?",
+                    (now_utc, limit),
+                ).fetchall()
+                if rows:
+                    self.conn.executemany(
+                        "UPDATE reminders SET notified_at = ? WHERE id = ? AND notified_at IS NULL",
+                        [(now_utc, row["id"]) for row in rows],
+                    )
+                self.conn.commit()
+                return rows
             except Exception:
                 self.conn.rollback()
                 raise

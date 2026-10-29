@@ -14,6 +14,7 @@ from .nutrition.fetch_meals import FetchMealsTool
 from .nutrition.delete_meal import DeleteMealTool
 from .weather import WeatherTool
 from .time_tool import TimeTool
+from .reminders import RemindersTool
 from .stop import StopTool
 
 # Import supporting functions that may still be used elsewhere
@@ -29,5 +30,6 @@ __all__ = [
     'DeleteMealTool',
     'WeatherTool',
     'TimeTool',
+    'RemindersTool',
     'StopTool',
 ]

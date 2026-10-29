@@ -133,6 +133,13 @@ The central controller that manages:
 | **TaskCentreWindow** | Submit, monitor, and cancel prompts executed by the local task service |
 | **ChatWindow** | Text chat interface alongside voice; shares one conversation with the voice path and is enabled only while the daemon is running (see `chat_window.spec.md`) |
 
+Due reminder events arrive through a dedicated daemon stdout protocol in both
+bundled and subprocess modes. The desktop handles them on the GUI thread and
+shows a native tray notification with the reminder text. Reminder protocol
+frames are hidden from ordinary logs; the user-facing reminder appears in the
+activity log. If a reminder becomes due while Jarvis is stopped, it is
+notified after the next daemon start.
+
 ### Activity log and downloads
 
 - Daemon startup emits its build version and release channel before loading configuration. Bundled builds use their stamped metadata; source runs without build metadata identify as `dev-local (develop)`. The identity remains visible in shared logs when configuration loading fails.

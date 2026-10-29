@@ -51,6 +51,12 @@ TOOL_SELECTION_CASES = [
         5,
         id="web search query selects webSearch and few others",
     ),
+    pytest.param(
+        "remind me to call Sam tomorrow at three",
+        ["reminders"],
+        5,
+        id="reminder request selects reminders and few others",
+    ),
 ]
 
 
