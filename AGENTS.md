@@ -27,6 +27,7 @@ Any code change must either adhere to our spec files perfectly or you should ask
 | `src/jarvis/reply/planner.spec.md` | Task-list planner: pre-loop query decomposition + direct-exec step resolver for small models | Fail-open; rides warm small model chain; advisory for large models, direct-exec for small |
 | `src/jarvis/tools/builtin/local_files.spec.md` | Local file operations and listing boundaries | Home-directory confinement; literal UTF-8 content; boolean recursion |
 | `src/jarvis/tools/builtin/tool_search.spec.md` | toolSearchTool escape hatch for mid-loop tool routing | Re-runs the same router; never removes stop/self; capped per reply |
+| `src/jarvis/tools/builtin/reminders.spec.md` | Local reminder creation, management and due delivery | Redacted local storage; timezone-aware future due time; claimed once; desktop notification while Jarvis runs |
 | `src/jarvis/tools/external/mcp_runtime.spec.md` | Persistent MCP runtime: per-server long-lived stdio session, queue-based dispatch, retry on transient session loss | One worker per server keyed by config; calls to the same server serialise; `MCPServerSessionError` for session-level failures; opt-in `idle_timeout_sec` for stateless servers |
 | `src/jarvis/reply/prompts/prompts.spec.md` | System/user prompt templates | — |
 | `src/jarvis/tools/builtin/web_search.spec.md` | webSearch tool: cascade fetch, SSRF guard, prompt-injection fence, links-only envelope | Untrusted web content is fenced as data, not instructions; rank preference over speed; honest failure over confabulation |

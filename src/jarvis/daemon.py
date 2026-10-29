@@ -116,6 +116,17 @@ CHAT_REWIND_IPC_PREFIX = "__CHAT_REWIND__:"
 CHAT_RESTORE_IPC_PREFIX = "__CHAT_RESTORE__:"
 VOICE_PAUSE_IPC_PREFIX = "__VOICE_PAUSE__:"
 VOICE_STATUS_IPC_PREFIX = "__VOICE_STATUS__:"
+REMINDER_EVENT_PREFIX = "__REMINDER__:"
+
+
+def _deliver_due_reminders(db) -> int:
+    """Publish reminders due now, after atomically claiming them for delivery."""
+    from .reminder_service import deliver_due_reminders
+
+    return deliver_due_reminders(
+        db,
+        lambda data: _emit_ipc_event(REMINDER_EVENT_PREFIX, "due", data, "reminders"),
+    )
 
 
 def set_voice_listening_paused(paused: bool) -> Optional[bool]:
@@ -1201,6 +1212,7 @@ def _run_daemon(smoke_test: bool = False) -> None:
     # Periodic diary update checking
     last_diary_check = time.time()
     diary_check_interval = 60.0
+    last_reminder_check = 0.0
 
     # Start stdin monitor thread.
     # Two jobs:
@@ -1266,6 +1278,11 @@ def _run_daemon(smoke_test: bool = False) -> None:
         while not _global_stop_requested:
             time.sleep(1.0)
             now = time.time()
+
+            # Deliver reminders promptly and recover reminders that became due while Jarvis was off.
+            if now - last_reminder_check >= 1.0:
+                _deliver_due_reminders(db)
+                last_reminder_check = now
 
             # Periodically check if diary should be updated
             if now - last_diary_check >= diary_check_interval:
